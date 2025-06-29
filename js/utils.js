@@ -255,59 +255,55 @@ function getSelectedFiles() {
 
     let selectedFiles = new Set();
 
-    // 1. Add manually checked files first. This ensures user's manual choices are always respected.
+    // 1. Add manually checked files first.
     allFileCheckboxes.forEach(checkbox => {
         if (checkbox.checked) {
-            selectedFiles.add(checkbox.value); // Add the JSON string to the set
+            selectedFiles.add(checkbox.value);
         }
     });
 
-    // 2. If auto-select is enabled, apply the hybrid include/exclude logic.
     if (autoNextJSUI) {
-        // Broadly define what might contain UI code.
-        const inclusionPaths = [
-            '/app/',
-            '/components/',
-            '/styles/',
-            '/ui/',
-            '/theme/',
-            '/design-system/',
-            '/assets/',
-            '/public/',
-            '/hooks/',
-            '/lib/',
-            '/utils/',
-            '/config/', // Often contains theme/UI configs
-            '/store/', // Often contains UI state
+        // --- FILTERING CONFIGURATION ---
+
+        // PASS 1: HARD EXCLUSIONS
+        const absolutelyExcludeFolders = [
+            '/node_modules/', '/.next/', '/dist/', '/.vercel/',
+            '/api/', '/db/', '/scripts/', '/.husky/', '/.vscode/',
+            '/__tests__/'
+        ];
+        const absolutelyExcludeFiles = [
+            'middleware.ts', 'middleware.js',
+            'drizzle.config.ts', 'next.config.js', 'next.config.mjs',
+            'auth.config.ts', 'auth.config.js',
+            'sitemap.ts', 'sitemap.js',
+            'routes.ts'
+        ];
+        const absolutelyExcludePatterns = [
+            /\.test\.(js|ts|jsx|tsx)$/,
+            /\.spec\.(js|ts|jsx|tsx)$/,
+            /^\/route\.(js|ts|jsx|tsx)$/, // Root route handlers
+            /\/route\.(js|ts|jsx|tsx)$/  // Nested route handlers
         ];
 
-        // Define specific root-level files that are always part of the UI.
-        const inclusionFiles = [
-            '/tailwind.config.js',
-            '/tailwind.config.ts',
-            '/postcss.config.js',
+        // PASS 2: FILE TYPE FILTER
+        const allowedExtensions = ['.js', '.jsx', '.ts', '.tsx', '.css', '.scss', '.sass', '.less', '.json', '.svg', '.mdx'];
+
+        // PASS 3: SURGICAL INCLUSIONS
+        const uiFolders = [
+            '/components/', '/styles/', '/ui/', '/theme/', '/design-system/',
+            '/assets/', '/public/', '/css/', '/sass/', '/scss/'
         ];
-
-        // STRICTLY define what to exclude, overriding any inclusion rules.
-        const exclusionPaths = [
-            '/node_modules/',
-            '/.next/',
-            '/dist/',
-            '/api/', // Excludes all API routes
-            '/db/', // Excludes database schemas and clients
-            '/actions/', // Excludes server actions
-            '/scripts/', // Excludes build/utility scripts
+        const uiFiles = [
+            'tailwind.config.js', 'tailwind.config.ts',
+            'postcss.config.js', 'postcss.config.mjs', 'postcss.config.cjs',
+            'stitches.config.js', 'stitches.config.ts',
+            'theme.config.js', 'theme.config.ts',
+            '/lib/utils.ts', '/lib/utils.js' // Specific exception for shadcn `cn` utility
         ];
+        // Regex to match UI-specific files in App Router
+        const uiComponentFilePattern = /(\/|^)(page|layout|template|loading|error|not-found)\.(tsx|js|jsx)$/;
 
-        // Define specific files to always exclude.
-        const exclusionFiles = [
-            '/middleware.ts',
-            '/drizzle.config.ts',
-        ];
-
-        // Define allowed text-based file extensions, including SVGs for icons.
-        const allowedExtensions = ['.js', '.jsx', '.ts', '.tsx', '.css', '.scss', '.sass', '.less', '.json', '.mdx', '.svg'];
-
+        // --- FILTERING LOGIC ---
         allFileCheckboxes.forEach(checkbox => {
             if (!checkbox.value) return;
 
@@ -315,25 +311,20 @@ function getSelectedFiles() {
                 const fileInfo = JSON.parse(checkbox.value);
                 const path = fileInfo.path;
 
-                // --- Exclusion Logic ---
-                // If the path matches any exclusion rule, SKIP this file immediately.
-                if (exclusionPaths.some(p => path.includes(p)) || exclusionFiles.some(f => path === f)) {
-                    return;
-                }
+                // PASS 1: Run Hard Exclusions
+                if (absolutelyExcludeFolders.some(p => path.includes(p))) return;
+                if (absolutelyExcludeFiles.some(f => path.endsWith(f))) return;
+                if (absolutelyExcludePatterns.some(p => p.test(path))) return;
 
-                // --- File Type Logic ---
-                // If it's not an allowed file type, SKIP it.
-                if (!allowedExtensions.some(ext => path.endsWith(ext))) {
-                    return;
-                }
+                // PASS 2: Run File Type Filter
+                if (!allowedExtensions.some(ext => path.endsWith(ext))) return;
 
-                // --- Inclusion Logic ---
-                // If the file passes exclusion checks, check if it should be included.
-                const shouldBeIncluded =
-                    inclusionFiles.some(f => path === f) ||
-                    inclusionPaths.some(p => path.startsWith(p));
+                // PASS 3: Run Surgical Inclusions
+                const isUIComponent = uiComponentFilePattern.test(path);
+                const isUIFile = uiFiles.some(f => path.endsWith(f));
+                const isInUIFolder = uiFolders.some(p => path.startsWith(p));
 
-                if (shouldBeIncluded) {
+                if (isUIComponent || isUIFile || isInUIFolder) {
                     selectedFiles.add(checkbox.value);
                 }
 
@@ -343,7 +334,6 @@ function getSelectedFiles() {
         });
     }
 
-    // Convert the set of JSON strings back to an array of objects
     return Array.from(selectedFiles).map(fileString => JSON.parse(fileString));
 }
 
