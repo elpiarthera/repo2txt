@@ -252,89 +252,87 @@ function sortContents(a, b) {
 function getSelectedFiles() {
     const autoNextJSUI = document.getElementById('autoNextJSUI')?.checked;
     const allFileCheckboxes = document.querySelectorAll('#directoryStructure input[type="checkbox"]:not(.directory-checkbox)');
-
-    let selectedFiles = new Set();
-
-    // 1. Add manually checked files first.
-    allFileCheckboxes.forEach(checkbox => {
-        if (checkbox.checked) {
-            selectedFiles.add(checkbox.value);
-        }
-    });
+    let selectedFileValues = new Set(); // Use a Set to store the JSON string values to prevent duplicates
 
     if (autoNextJSUI) {
-        // --- FILTERING CONFIGURATION ---
+        // --- AUTO-SELECT LOGIC ---
+        // If the auto-select box is checked, we take full control and ignore all manual/default checks.
 
-        // PASS 1: HARD EXCLUSIONS
-        const absolutelyExcludeFolders = [
-            '/node_modules/', '/.next/', '/dist/', '/.vercel/',
-            '/api/', '/db/', '/scripts/', '/.husky/', '/.vscode/',
-            '/__tests__/'
-        ];
-        const absolutelyExcludeFiles = [
-            'middleware.ts', 'middleware.js',
-            'drizzle.config.ts', 'next.config.js', 'next.config.mjs',
-            'auth.config.ts', 'auth.config.js',
-            'sitemap.ts', 'sitemap.js',
-            'routes.ts'
-        ];
-        const absolutelyExcludePatterns = [
-            /\.test\.(js|ts|jsx|tsx)$/,
-            /\.spec\.(js|ts|jsx|tsx)$/,
-            /^\/route\.(js|ts|jsx|tsx)$/, // Root route handlers
-            /\/route\.(js|ts|jsx|tsx)$/  // Nested route handlers
+        // STAGE 1: HARD EXCLUSIONS - If a path matches these, it's NEVER included.
+        const excludePatterns = [
+            /^\/node_modules\//, /^\/\.next\//, /^\/\.vercel\//, /^\/dist\//, // Build folders
+            /^\/api\//, /^\/app\/api\//, // API routes
+            /\/route\.(js|ts|jsx|tsx)$/, // ALL route handlers
+            /^\/db\//, /^\/prisma\//, /^\/drizzle\//, // Database
+            /^\/actions\//, /^\/server\//, /^\/trpc\//, // Server-side logic
+            /^\/scripts\//, // Scripts
+            /\.test\./, /\.spec\./, // Test files
+            /^\/middleware\.(js|ts)$/, // Middleware
+            /^\/next\.config\./, // Next.js config
+            /^\/drizzle\.config\./, // Drizzle config
+            /^\/sitemap\.(js|ts)$/, // Sitemap
+            /^\/routes\.(js|ts)$/ // Routes definition
         ];
 
-        // PASS 2: FILE TYPE FILTER
+        // STAGE 2: ALLOWED FILE TYPES
         const allowedExtensions = ['.js', '.jsx', '.ts', '.tsx', '.css', '.scss', '.sass', '.less', '.json', '.svg', '.mdx'];
 
-        // PASS 3: SURGICAL INCLUSIONS
-        const uiFolders = [
-            '/components/', '/styles/', '/ui/', '/theme/', '/design-system/',
+        // STAGE 3: POSITIVE INCLUSIONS - After passing exclusions, a file MUST match one of these to be included.
+        const includeFolders = [
+            '/components/', '/ui/', '/styles/', '/theme/', '/design-system/',
             '/assets/', '/public/', '/css/', '/sass/', '/scss/'
         ];
-        const uiFiles = [
+        const includeFiles = [
+            '/app/globals.css',
             'tailwind.config.js', 'tailwind.config.ts',
-            'postcss.config.js', 'postcss.config.mjs', 'postcss.config.cjs',
-            'stitches.config.js', 'stitches.config.ts',
-            'theme.config.js', 'theme.config.ts',
-            '/lib/utils.ts', '/lib/utils.js' // Specific exception for shadcn `cn` utility
+            'postcss.config.js', 'postcss.config.mjs',
+            '/lib/utils.ts', '/lib/utils.js' // The 'cn' utility
         ];
-        // Regex to match UI-specific files in App Router
-        const uiComponentFilePattern = /(\/|^)(page|layout|template|loading|error|not-found)\.(tsx|js|jsx)$/;
+        // Regex to match essential App Router UI files (layout, page, etc.)
+        const appRouterUIPattern = /(\/|^)(page|layout|template|loading|error|not-found)\.(tsx|js|jsx)$/;
 
-        // --- FILTERING LOGIC ---
         allFileCheckboxes.forEach(checkbox => {
             if (!checkbox.value) return;
-
             try {
                 const fileInfo = JSON.parse(checkbox.value);
                 const path = fileInfo.path;
 
-                // PASS 1: Run Hard Exclusions
-                if (absolutelyExcludeFolders.some(p => path.includes(p))) return;
-                if (absolutelyExcludeFiles.some(f => path.endsWith(f))) return;
-                if (absolutelyExcludePatterns.some(p => p.test(path))) return;
-
-                // PASS 2: Run File Type Filter
-                if (!allowedExtensions.some(ext => path.endsWith(ext))) return;
-
-                // PASS 3: Run Surgical Inclusions
-                const isUIComponent = uiComponentFilePattern.test(path);
-                const isUIFile = uiFiles.some(f => path.endsWith(f));
-                const isInUIFolder = uiFolders.some(p => path.startsWith(p));
-
-                if (isUIComponent || isUIFile || isInUIFolder) {
-                    selectedFiles.add(checkbox.value);
+                // STAGE 1 CHECK
+                if (excludePatterns.some(pattern => pattern.test(path))) {
+                    return;
                 }
 
-            } catch (error) {
-                console.error('Error parsing checkbox value as JSON:', checkbox.value, error);
+                // STAGE 2 CHECK
+                if (!allowedExtensions.some(ext => path.endsWith(ext))) {
+                    return;
+                }
+
+                // STAGE 3 CHECK
+                const isIncluded =
+                    includeFolders.some(folder => path.startsWith(folder)) ||
+                    includeFiles.some(file => path.endsWith(file)) ||
+                    appRouterUIPattern.test(path);
+
+                if (isIncluded) {
+                    selectedFileValues.add(checkbox.value);
+                }
+            } catch (e) {
+                // Ignore errors from unparseable checkbox values
+            }
+        });
+
+    } else {
+        // --- ORIGINAL LOGIC ---
+        // If auto-select is OFF, just grab the files that are already checked. This fixes the regression.
+        allFileCheckboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                selectedFileValues.add(checkbox.value);
             }
         });
     }
 
-    return Array.from(selectedFiles).map(fileString => JSON.parse(fileString));
+    // Convert the set of JSON strings back to an array of objects
+    return Array.from(selectedFileValues).map(fileString => JSON.parse(fileString));
 }
 
 // Format repository contents into a single text
