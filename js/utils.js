@@ -250,80 +250,101 @@ function sortContents(a, b) {
 
 // Get selected files from the directory structure
 function getSelectedFiles() {
-  const autoNextJSUI = document.getElementById('autoNextJSUI')?.checked;
-  const allFileCheckboxes = document.querySelectorAll('#directoryStructure input[type="checkbox"]:not(.directory-checkbox)');
+    const autoNextJSUI = document.getElementById('autoNextJSUI')?.checked;
+    const allFileCheckboxes = document.querySelectorAll('#directoryStructure input[type="checkbox"]:not(.directory-checkbox)');
 
-  let selectedFiles = new Set();
+    let selectedFiles = new Set();
 
-  // 1. Add manually checked files
-  allFileCheckboxes.forEach(checkbox => {
-    if (checkbox.checked) {
-      selectedFiles.add(checkbox.value); // Add the JSON string to the set
-    }
-  });
-
-  // 2. If auto-select is enabled, find and add Next.js UI files
-  if (autoNextJSUI) {
-    const nextjsDesignPaths = [
-      '/components/',
-      '/styles/',
-      '/app/layout.',
-      '/app/globals.css',
-      '/public/fonts/',
-      '/public/images/',
-      '/public/icons/',
-      '/public/',
-      '/assets/',
-      '/ui/',
-      '/design-system/',
-      '/theme/',
-      '/sass/',
-      '/scss/',
-      '/less/',
-      '/css/',
-      '/stylesheets/'
-    ];
-    const nextjsDesignFiles = [
-      '/tailwind.config.js',
-      '/theme.js',
-      '/theme.ts',
-      '/theme.config.js',
-      '/stitches.config.js',
-      '/styled-system/'
-    ];
-    const textFileExtensions = ['.js', '.jsx', '.ts', '.tsx', '.css', '.scss', '.sass', '.less', '.html', '.md', '.mdx', '.json', '.svg'];
-
+    // 1. Add manually checked files first. This ensures user's manual choices are always respected.
     allFileCheckboxes.forEach(checkbox => {
-      // Ensure checkbox.value is not undefined and is a valid JSON string
-      if (!checkbox.value) {
-        console.warn('Skipping checkbox with undefined value:', checkbox);
-        return;
-      }
-      try {
-        const fileInfo = JSON.parse(checkbox.value);
-
-        // Ignore common large/irrelevant directories
-        if (fileInfo.path.includes('/node_modules/') || fileInfo.path.includes('/.next/') || fileInfo.path.includes('/dist/')) {
-          return;
+        if (checkbox.checked) {
+            selectedFiles.add(checkbox.value); // Add the JSON string to the set
         }
-
-        const isDesignFile = nextjsDesignFiles.some(name => fileInfo.path === name) ||
-                            nextjsDesignPaths.some(p => fileInfo.path.startsWith(p));
-
-        // Only include if it's a design file AND has a text-based extension
-        const isTextFile = textFileExtensions.some(ext => fileInfo.path.endsWith(ext));
-
-        if (isDesignFile && isTextFile) {
-          selectedFiles.add(checkbox.value);
-        }
-      } catch (error) {
-        console.error('Error parsing checkbox value as JSON:', checkbox.value, error);
-      }
     });
-  }
 
-  // Convert the set of JSON strings back to an array of objects
-  return Array.from(selectedFiles).map(fileString => JSON.parse(fileString));
+    // 2. If auto-select is enabled, apply the hybrid include/exclude logic.
+    if (autoNextJSUI) {
+        // Broadly define what might contain UI code.
+        const inclusionPaths = [
+            '/app/',
+            '/components/',
+            '/styles/',
+            '/ui/',
+            '/theme/',
+            '/design-system/',
+            '/assets/',
+            '/public/',
+            '/hooks/',
+            '/lib/',
+            '/utils/',
+            '/config/', // Often contains theme/UI configs
+            '/store/', // Often contains UI state
+        ];
+
+        // Define specific root-level files that are always part of the UI.
+        const inclusionFiles = [
+            '/tailwind.config.js',
+            '/tailwind.config.ts',
+            '/postcss.config.js',
+        ];
+
+        // STRICTLY define what to exclude, overriding any inclusion rules.
+        const exclusionPaths = [
+            '/node_modules/',
+            '/.next/',
+            '/dist/',
+            '/api/', // Excludes all API routes
+            '/db/', // Excludes database schemas and clients
+            '/actions/', // Excludes server actions
+            '/scripts/', // Excludes build/utility scripts
+        ];
+
+        // Define specific files to always exclude.
+        const exclusionFiles = [
+            '/middleware.ts',
+            '/drizzle.config.ts',
+        ];
+
+        // Define allowed text-based file extensions, including SVGs for icons.
+        const allowedExtensions = ['.js', '.jsx', '.ts', '.tsx', '.css', '.scss', '.sass', '.less', '.json', '.mdx', '.svg'];
+
+        allFileCheckboxes.forEach(checkbox => {
+            if (!checkbox.value) return;
+
+            try {
+                const fileInfo = JSON.parse(checkbox.value);
+                const path = fileInfo.path;
+
+                // --- Exclusion Logic ---
+                // If the path matches any exclusion rule, SKIP this file immediately.
+                if (exclusionPaths.some(p => path.includes(p)) || exclusionFiles.some(f => path === f)) {
+                    return;
+                }
+
+                // --- File Type Logic ---
+                // If it's not an allowed file type, SKIP it.
+                if (!allowedExtensions.some(ext => path.endsWith(ext))) {
+                    return;
+                }
+
+                // --- Inclusion Logic ---
+                // If the file passes exclusion checks, check if it should be included.
+                const shouldBeIncluded =
+                    inclusionFiles.some(f => path === f) ||
+                    inclusionPaths.some(p => path.startsWith(p));
+
+                if (shouldBeIncluded) {
+                    selectedFiles.add(checkbox.value);
+                }
+
+            } catch (error) {
+                console.error('Error parsing checkbox value as JSON:', checkbox.value, error);
+            }
+        });
+    }
+
+    // Convert the set of JSON strings back to an array of objects
+    return Array.from(selectedFiles).map(fileString => JSON.parse(fileString));
 }
 
 // Format repository contents into a single text
