@@ -1,8 +1,14 @@
-// js/nextjs-filter.js
+// js/nextjs-filter.js - FINAL, CORRECTED VERSION
 
 // This function takes a list of all files and returns only the Next.js UI files.
 export function filterNextJSFiles(allFiles) {
-    // THE RULES:
+    // Defensive check to ensure the input is a valid array.
+    if (!Array.isArray(allFiles)) {
+        console.error('filterNextJSFiles: Expected array input, received:', typeof allFiles);
+        return [];
+    }
+
+    // --- THE RULES ---
 
     // 1. HARD EXCLUSIONS: Anything matching these patterns is IMMEDIATELY REJECTED.
     const excludePatterns = [
@@ -17,7 +23,9 @@ export function filterNextJSFiles(allFiles) {
         /^\/drizzle\.config\./,     // Drizzle config
         /^\/sitemap\.(js|ts)$/,      // Sitemap file
         /^\/routes\.(js|ts)$/,      // Custom routes file
-        /\.env/, /\.lockb$/,        // Environment and lock files
+        /\.env/,                    // Environment files
+        // Comprehensive lockfile patterns (from Coderabbit report)
+        /package-lock\.json$/, /yarn\.lock$/, /pnpm-lock\.yaml$/, /\.lockb$/,
         /^\.git/, /^\.husky/        // Git and Husky configs
     ];
 
@@ -34,21 +42,26 @@ export function filterNextJSFiles(allFiles) {
     const selectedFiles = [];
 
     for (const fileInfo of allFiles) {
+        // Defensive check for the file object itself.
+        if (!fileInfo || typeof fileInfo.path !== 'string') {
+            continue;
+        }
+
         const path = fileInfo.path;
 
         // CHECK 1: Is it hard-excluded?
         if (excludePatterns.some(pattern => pattern.test(path))) {
-            continue; // Skip this file.
+            continue;
         }
 
         // CHECK 2: Is it a valid file type?
         if (!allowedExtensions.some(ext => path.endsWith(ext))) {
-            continue; // Skip this file.
+            continue;
         }
 
         // CHECK 3: Is it in an included folder?
         if (includeFolders.some(folder => path.startsWith(folder))) {
-            selectedFiles.push(fileInfo); // Success! Add the file.
+            selectedFiles.push(fileInfo);
         }
     }
 
