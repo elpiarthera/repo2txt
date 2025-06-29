@@ -250,8 +250,80 @@ function sortContents(a, b) {
 
 // Get selected files from the directory structure
 function getSelectedFiles() {
-    const checkboxes = document.querySelectorAll('#directoryStructure input[type="checkbox"]:checked:not(.directory-checkbox)');
-    return Array.from(checkboxes).map(checkbox => JSON.parse(checkbox.value));
+  const autoNextJSUI = document.getElementById('autoNextJSUI')?.checked;
+  const allFileCheckboxes = document.querySelectorAll('#directoryStructure input[type="checkbox"]:not(.directory-checkbox)');
+
+  let selectedFiles = new Set();
+
+  // 1. Add manually checked files
+  allFileCheckboxes.forEach(checkbox => {
+    if (checkbox.checked) {
+      selectedFiles.add(checkbox.value); // Add the JSON string to the set
+    }
+  });
+
+  // 2. If auto-select is enabled, find and add Next.js UI files
+  if (autoNextJSUI) {
+    const nextjsDesignPaths = [
+      '/components/',
+      '/styles/',
+      '/app/layout.',
+      '/app/globals.css',
+      '/public/fonts/',
+      '/public/images/',
+      '/public/icons/',
+      '/public/',
+      '/assets/',
+      '/ui/',
+      '/design-system/',
+      '/theme/',
+      '/sass/',
+      '/scss/',
+      '/less/',
+      '/css/',
+      '/stylesheets/'
+    ];
+    const nextjsDesignFiles = [
+      '/tailwind.config.js',
+      '/theme.js',
+      '/theme.ts',
+      '/theme.config.js',
+      '/stitches.config.js',
+      '/styled-system/'
+    ];
+    const textFileExtensions = ['.js', '.jsx', '.ts', '.tsx', '.css', '.scss', '.sass', '.less', '.html', '.md', '.mdx', '.json', '.svg'];
+
+    allFileCheckboxes.forEach(checkbox => {
+      // Ensure checkbox.value is not undefined and is a valid JSON string
+      if (!checkbox.value) {
+        console.warn('Skipping checkbox with undefined value:', checkbox);
+        return;
+      }
+      try {
+        const fileInfo = JSON.parse(checkbox.value);
+
+        // Ignore common large/irrelevant directories
+        if (fileInfo.path.includes('/node_modules/') || fileInfo.path.includes('/.next/') || fileInfo.path.includes('/dist/')) {
+          return;
+        }
+
+        const isDesignFile = nextjsDesignFiles.some(name => fileInfo.path === name) ||
+                            nextjsDesignPaths.some(p => fileInfo.path.startsWith(p));
+
+        // Only include if it's a design file AND has a text-based extension
+        const isTextFile = textFileExtensions.some(ext => fileInfo.path.endsWith(ext));
+
+        if (isDesignFile && isTextFile) {
+          selectedFiles.add(checkbox.value);
+        }
+      } catch (error) {
+        console.error('Error parsing checkbox value as JSON:', checkbox.value, error);
+      }
+    });
+  }
+
+  // Convert the set of JSON strings back to an array of objects
+  return Array.from(selectedFiles).map(fileString => JSON.parse(fileString));
 }
 
 // Format repository contents into a single text
